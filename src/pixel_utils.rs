@@ -12,21 +12,20 @@
  * @param   {number}  b       The blue color value
  * @return  {Array}           The HSL representation
  */
-pub fn rgb_to_hsl(rb: u8, gb: u8, bb: u8) -> [f64; 3] {
-    let r: f64 = rb as f64 / 255.0;
-    let g: f64 = gb as f64 / 255.0;
-    let b: f64 = bb as f64 / 255.0;
+pub fn rgb_to_hsl(pixel: &Pixel) -> [f64; 3] {
+    let r: f64 = pixel.r as f64 / 255.0;
+    let g: f64 = pixel.g as f64 / 255.0;
+    let b: f64 = pixel.b as f64 / 255.0;
     let max = r.max(g.max(b));
     let min = r.min(g.min(b));
     let l = (max + min) as f64 / 2.0;
 
-    if max == min {
-        return [0.0, 0.0, l]; // achromatic
+    return if max == min {
+        [0.0, 0.0, l] // achromatic
     } else {
         let d = max - min;
         let s = if l > 0.5
-        { d / (2.0 - max - min) } else
-        { d / (max + min) };
+        { d / (2.0 - max - min) } else { d / (max + min) };
         let mut h = if max == r {
             (g - b) / d + (if g < b { 6.0 } else { 0.0 })
         } else if max == g {
@@ -35,37 +34,65 @@ pub fn rgb_to_hsl(rb: u8, gb: u8, bb: u8) -> [f64; 3] {
             (r - g) / d + 4.0
         };
         h /= 6.0;
-        return [h, s, l];
+        [h, s, l]
     }
 }
 
-pub fn is_whitish(point: &Point, [r, g, b]: [u8; 3]) -> bool {
-    let [h, s, l] = rgb_to_hsl(r, g, b);
-
-    let is_whitish = l > 0.8 || s < 0.2 && l > 0.4;
-    println!("Ololo is_whitish {}x{} {} - ({}, {}, {}) -> ({}, {}, {})", point.x, point.y, is_whitish, r, g, b, h, s, l);
-
-    return is_whitish;
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Pixel {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+impl Pixel {
+    pub const BLACK: Pixel = Pixel { r: 0, g: 0, b: 0 };
+
+    pub fn get_hue(&self) -> f64 {
+        let [h, _s, _l] = rgb_to_hsl(self);
+        return h;
+    }
+
+    pub fn get_saturation(&self) -> f64 {
+        let [_h, s, _l] = rgb_to_hsl(self);
+        return s;
+    }
+
+    pub fn get_lightness(&self) -> f64 {
+        let [_h, _s, l] = rgb_to_hsl(self);
+        return l;
+    }
+
+    pub fn is_nearly_white(&self) -> bool {
+        let [_h, _s, l] = rgb_to_hsl(&self);
+        return l > 0.80;
+    }
+
+    pub fn is_somewhat_white(&self) -> bool {
+        let [_h, s, l] = rgb_to_hsl(&self);
+        return self.is_nearly_white() || s < 0.20 && l > 0.35;
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Point {
     pub x: usize,
     pub y: usize,
 }
 
-pub fn get_surrounding(base_point: &Point, width: usize, height: usize) -> impl Iterator<Item = Point> {
-    let options = [
-        Point { x: base_point.x - 1, y: base_point.y },
-        Point { x: base_point.x    , y: base_point.y + 1 },
-        Point { x: base_point.x + 1, y: base_point.y },
-        Point { x: base_point.x    , y: base_point.y - 1 },
-    ];
-    return std::array::IntoIter::new(options)
-        .filter(move |option| {
-            return option.x < width
-                && option.y < height
-                && option.x >= 0
-                && option.y >= 0;
-        });
+pub fn get_surrounding(base_point: &Point, width: usize, height: usize) -> Vec<Point> {
+    let mut options = Vec::new();
+    if base_point.x > 0 {
+        options.push(Point { x: base_point.x - 1, y: base_point.y });
+    }
+    if base_point.x < width - 1 {
+        options.push(Point { x: base_point.x + 1, y: base_point.y });
+    }
+    if base_point.y > 0 {
+        options.push(Point { x: base_point.x    , y: base_point.y - 1 });
+    }
+    if base_point.y < height - 1 {
+        options.push(Point { x: base_point.x    , y: base_point.y + 1 });
+    }
+    return options;
 }

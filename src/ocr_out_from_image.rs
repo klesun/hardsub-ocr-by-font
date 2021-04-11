@@ -3,12 +3,9 @@ use std::fs::File;
 use std::io::Read;
 use std::io::prelude::*;
 use std::fs;
-use ffmpeg_next::software::scaling::Vector;
 use crate::ppm_format;
 use crate::ppm_format::PpmData;
-use crate::pixel_utils;
-use crate::pixel_utils::{Point, get_surrounding, is_whitish};
-use std::iter::Filter;
+use crate::pixel_utils::{Point, get_surrounding, Pixel};
 
 fn read_file(suffix: &str) -> PpmData {
     let frame_name = "frame15";
@@ -17,7 +14,7 @@ fn read_file(suffix: &str) -> PpmData {
     let mut file = File::open(path).unwrap();
     let file_size = metadata.len() as usize;
     let mut raw_bytes = vec![0 as u8; file_size];
-    file.read(&mut raw_bytes);
+    file.read(&mut raw_bytes).unwrap();
 
     return ppm_format::decode(raw_bytes);
 }
@@ -42,25 +39,17 @@ impl SubsOcrFrame {
     }
 
     fn get_byte_index(&self, point: &Point) -> usize {
-        let pixel_index = point.y * self.get_width() + point.x;
-        return pixel_index * 3;
+        return self.full_ppm.get_byte_index(&point);
     }
 
-    fn get_pixel(&self, point: &Point) -> [u8; 3] {
-        let byte_index = self.get_byte_index(point);
-        let r = self.full_ppm.get_bitmap()[byte_index + 0];
-        let g = self.full_ppm.get_bitmap()[byte_index + 1];
-        let b = self.full_ppm.get_bitmap()[byte_index + 2];
-
-        return [r, g, b];
+    fn get_pixel(&self, point: &Point) -> Pixel {
+        return self.full_ppm.get_pixel(&point);
     }
 
     fn load() -> SubsOcrFrame {
         // TODO; wrong naming, it's not old/new, it's full/text-only
         let full_ppm = read_file("_old");
         let text_ppm = read_file("_new");
-
-        println!("ololo full_bitmap {}", full_ppm.get_bitmap().len());
 
         let ocr_frame = SubsOcrFrame { full_ppm, text_ppm };
         if ocr_frame.get_bitmap_length() != ocr_frame.full_ppm.get_bitmap().len() {
@@ -78,6 +67,7 @@ impl SubsOcrFrame {
 
 struct OcrProcess {
     ocr_frame: SubsOcrFrame,
+    /// x-to-y-to-bool
     checked_points: Vec<Vec<bool>>,
     matched_points: Vec<Point>,
     output_bitmap: Vec<u8>,
@@ -86,8 +76,8 @@ struct OcrProcess {
 impl OcrProcess {
     fn init(ocr_frame: SubsOcrFrame) -> OcrProcess {
         let checked_points = vec![
-            vec![false; ocr_frame.get_width()];
-            ocr_frame.get_height()
+            vec![false; ocr_frame.get_height()];
+            ocr_frame.get_width()
         ];
         let matched_points = Vec::new();
         let output_bitmap = vec![
@@ -104,7 +94,7 @@ impl OcrProcess {
         self.matched_points.push(point);
 
         let byte_index = self.ocr_frame.get_byte_index(&point);
-        let [r, g, b] = self.ocr_frame.get_pixel(&point);
+        let Pixel { r, g, b } = self.ocr_frame.get_pixel(&point);
         self.output_bitmap[byte_index + 0] = r;
         self.output_bitmap[byte_index + 1] = g;
         self.output_bitmap[byte_index + 2] = b;
@@ -124,6 +114,25 @@ impl OcrProcess {
             }
         }
         return options;
+    }
+
+    fn match_as_part_of_letter(&mut self, point: Point, pixel: &Pixel) {
+        if !pixel.is_nearly_white() {
+            return;
+        }
+        self.keep_pixel(point);
+        let mut pick_points = Vec::with_capacity(64);
+        pick_points.push(point);
+
+        while pick_points.len() > 0 {
+            let base_point = pick_points.pop().unwrap();
+            for next_point in self.check_surrounding(base_point) {
+                if self.ocr_frame.get_pixel(&next_point).is_somewhat_white() {
+                    self.keep_pixel(next_point);
+                    pick_points.push(next_point);
+                }
+            }
+        }
     }
 
     fn save_file(&self, name: &str) -> std::result::Result<(), std::io::Error> {
@@ -151,16 +160,27 @@ pub fn ocr_out_from_image() {
     let mut pick_points = Vec::with_capacity(10);
     pick_points.push(start_point);
 
+    for y in 0..process.ocr_frame.get_height() {
+        for x in 0..process.ocr_frame.get_width() {
+            let point = Point { x, y };
+            let pixel = process.ocr_frame.text_ppm.get_pixel(&point);
+            if pixel != Pixel::BLACK {
+                // this pixel had a significant change in
+                // the frame, likely a part of the hardsub
+                process.match_as_part_of_letter(point, &pixel);
+            }
+        }
+    }
     while pick_points.len() > 0 {
         let base_point = pick_points.pop().unwrap();
         for next_point in process.check_surrounding(base_point) {
-            if is_whitish(&next_point, process.ocr_frame.get_pixel(&next_point)) {
+            if process.ocr_frame.get_pixel(&next_point).is_somewhat_white() {
                 process.keep_pixel(next_point);
                 pick_points.push(next_point);
             }
         }
     }
 
-    println!("ponts picked: {}", process.matched_points.len());
+    println!("points picked: {}", process.matched_points.len());
     process.save_file("frame15_white_only").unwrap();
 }
