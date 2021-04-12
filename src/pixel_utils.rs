@@ -65,12 +65,17 @@ impl Pixel {
 
     pub fn is_nearly_white(&self) -> bool {
         let [_h, _s, l] = rgb_to_hsl(&self);
+        return l > 0.95;
+    }
+
+    pub fn is_closely_white(&self) -> bool {
+        let [_h, _s, l] = rgb_to_hsl(&self);
         return l > 0.80;
     }
 
     pub fn is_somewhat_white(&self) -> bool {
         let [_h, s, l] = rgb_to_hsl(&self);
-        return self.is_nearly_white() || s < 0.20 && l > 0.35;
+        return self.is_closely_white() || s < 0.20 && l > 0.35;
     }
 }
 
@@ -89,10 +94,10 @@ pub fn get_surrounding(base_point: &Point, width: usize, height: usize) -> Vec<P
         options.push(Point { x: base_point.x + 1, y: base_point.y });
     }
     if base_point.y > 0 {
-        options.push(Point { x: base_point.x    , y: base_point.y - 1 });
+        options.push(Point { x: base_point.x, y: base_point.y - 1 });
     }
     if base_point.y < height - 1 {
-        options.push(Point { x: base_point.x    , y: base_point.y + 1 });
+        options.push(Point { x: base_point.x, y: base_point.y + 1 });
     }
     return options;
 }
