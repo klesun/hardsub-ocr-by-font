@@ -10,7 +10,7 @@ use crate::ppm_format;
 use std::fs::File;
 use std::io::Write;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct CharMatch {
     pub char: char,
     pub match_score: i64,
@@ -85,15 +85,15 @@ fn match_bitmap_to_char(img_bitmap: &Vec<Vec<f32>>, char: char, font: &FontRef, 
         outlined.draw(|x, y, c| {
             coverages.push(PixelCoverage { x, y, c });
         });
-        let font_bitmap = make_rel_bitmap(coverages);
+        let font_matrix = make_rel_bitmap(coverages);
         if is_expected {
-            draw_debug(img_bitmap, &font_bitmap, char, index);
+            draw_debug(img_bitmap, &font_matrix.bitmap, char, index);
         }
 
         let mut matched_score = 0f32;
         let max_possible_score = (img_bitmap.len() * img_bitmap[0].len()) as f32;
 
-        for (x, cols) in font_bitmap.iter().enumerate() {
+        for (x, cols) in font_matrix.bitmap.iter().enumerate() {
             for (y, c) in cols.iter().enumerate() {
                 let mut overbound =
                     max(0, x as i64 - img_bitmap.len() as i64 + 1) +
@@ -125,9 +125,19 @@ fn coverage_to_color(coverage: f32) -> Color {
     return Color { r: lightness, g: lightness, b: lightness };
 }
 
-struct Bounds {
-    start: Point,
-    end: Point,
+pub struct Bounds {
+    pub start: Point,
+    pub end: Point,
+}
+
+impl Bounds {
+    pub fn get_width(&self) -> usize {
+        return self.end.x - self.start.x;
+    }
+
+    pub fn get_height(&self) -> usize {
+        return self.end.y - self.start.y;
+    }
 }
 
 fn get_bounds(letter_pixels: &Vec<PixelCoverage>) -> Bounds {
@@ -155,7 +165,12 @@ fn get_bounds(letter_pixels: &Vec<PixelCoverage>) -> Bounds {
     };
 }
 
-fn make_rel_bitmap(letter_pixels: Vec<PixelCoverage>) -> Vec<Vec<f32>> {
+pub struct RelMatrix {
+    pub bounds: Bounds,
+    pub bitmap: Vec<Vec<f32>>,
+}
+
+fn make_rel_bitmap(letter_pixels: Vec<PixelCoverage>) -> RelMatrix {
     let bounds = get_bounds(&letter_pixels);
     let collected: Vec<&PixelCoverage> = letter_pixels
         .iter().filter(|p| p.c > 0.001).collect();
@@ -165,10 +180,13 @@ fn make_rel_bitmap(letter_pixels: Vec<PixelCoverage>) -> Vec<Vec<f32>> {
     for PixelCoverage { x, y, c } in &collected {
         rel_bitmap[(*x as usize - bounds.start.x)][(*y as usize - bounds.start.y)] = *c;
     }
-    return rel_bitmap;
+    return RelMatrix {
+        bounds: bounds,
+        bitmap: rel_bitmap,
+    };
 }
 
-fn make_rel_bitmap_from_image(letter_pixels: &[Pixel]) -> Vec<Vec<f32>> {
+pub fn make_rel_bitmap_from_image(letter_pixels: &[Pixel]) -> RelMatrix {
     return make_rel_bitmap(
         letter_pixels.iter()
             .map(|pixel| PixelCoverage {
@@ -180,24 +198,22 @@ fn make_rel_bitmap_from_image(letter_pixels: &[Pixel]) -> Vec<Vec<f32>> {
     );
 }
 
-pub fn match_letter_to_font(letter_pixels: &[Pixel], font: &FontRef, index: usize) -> BinaryHeap<CharMatch> {
-    let rel_bitmap = make_rel_bitmap_from_image(letter_pixels);
+pub fn match_letter_to_font(rel_bitmap: &Vec<Vec<f32>>, font: &FontRef, index: usize) -> Vec<CharMatch> {
     let char_options = [
         'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k',
         'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
         'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Z', 'X', 'C', 'V', 'B', 'N', 'M',
     ];
     let expected = ['T', 'h', 'h', 't', 't', 'b', 'e', 'r', 'e', 'a', 'r', 'e', 'm', 'a', 'n', 'y', 'e', 'o', 'r', 'e'];
-    println!("bounds: {} {} #{}", rel_bitmap.len(), rel_bitmap[0].len(), index);
 
     let mut matches = BinaryHeap::new();
     for char in &char_options {
         let is_expected = index < expected.len() && expected[index] == *char;
-        let matched = match_bitmap_to_char(&rel_bitmap, *char, font, is_expected, index);
+        let matched = match_bitmap_to_char(rel_bitmap, *char, font, is_expected, index);
         if is_expected {
             println!("expect match: {:?}", matched);
         }
         matches.push(matched);
     }
-    return matches;
+    return matches.into_vec();
 }

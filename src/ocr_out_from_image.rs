@@ -1,4 +1,4 @@
-use crate::match_letter_to_font::match_letter_to_font;
+use crate::match_letter_to_font::{match_letter_to_font, CharMatch, make_rel_bitmap_from_image, Bounds};
 use crate::pixel_utils::{get_surrounding, Color, Pixel, Point};
 use crate::ppm_format;
 use crate::ppm_format::PpmData;
@@ -7,6 +7,7 @@ use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
+use std::collections::BinaryHeap;
 
 fn read_file(suffix: &str) -> PpmData {
     let frame_name = "frame15";
@@ -157,15 +158,47 @@ fn get_font<'a>() -> FontRef<'a> {
     return FontRef::try_from_slice(font_bytes).unwrap();
 }
 
+struct OcredChar {
+    bounds: Bounds,
+    char_matches: Vec<CharMatch>,
+}
+
+fn group_chars_by_line(ocred_chars: Vec<OcredChar>) -> Vec<Vec<OcredChar>> {
+    let mut lines: Vec<Vec<OcredChar>> = Vec::new();
+    for ocred_char in ocred_chars {
+        let mut target_line: Option<usize> = None;
+        for i in 0..lines.len() {
+            let start_y = lines[i][0].bounds.start.y;
+            if ocred_char.bounds.start.y < start_y + 20 {
+                target_line = Some(i);
+                break;
+            }
+        }
+        let line_number: usize = match target_line {
+            Some(i) => i,
+            None => {
+                let mut new_line = Vec::new();
+                lines.push(new_line);
+                lines.len() - 1
+            },
+        };
+        lines[line_number].push(ocred_char);
+    }
+    for i in 0..lines.len() {
+        lines[i].sort_by(|a, b| a.bounds.start.x.cmp(&b.bounds.start.x));
+    }
+    return lines;
+}
+
 /// run through every white-ish pixel in the image, find the borders of the
 /// symbol it belongs to, (like magic stick in photoshop), then compare
 /// resulting bitmap to every character in the Sans-serif font
-pub fn ocr_out_from_image() {
+pub fn ocr_out_from_image<'a>() {
     let ocr_frame = SubsOcrFrame::load();
     let mut process = OcrProcess::init(&ocr_frame);
     let font = get_font();
 
-    let mut letters_matched = 0;
+    let mut ocred_chars: Vec<OcredChar> = Vec::new();
     for y in 0..ocr_frame.get_height() {
         for x in 0..ocr_frame.get_width() {
             let point = Point { x, y };
@@ -182,16 +215,33 @@ pub fn ocr_out_from_image() {
                     })
                     .collect();
                 if letter_pixels.len() > 0 {
-                    let mut char_matches = match_letter_to_font(&letter_pixels, &font, letters_matched);
-                    for _i in 0..3 {
-                        let next_best = char_matches.pop().unwrap();
-                        println!("actual match: {:?}", next_best);
-                    }
-                    letters_matched += 1;
-                    // panic!("v pizdu");
+                    let rel_bitmap = make_rel_bitmap_from_image(&letter_pixels);
+                    let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
+
+                    let next_best = char_matches[0];
+                    println!("actual match #{}: {:?}", ocred_chars.len(), next_best);
+
+                    let ocred_char: OcredChar = OcredChar {
+                        bounds: rel_bitmap.bounds,
+                        char_matches,
+                    };
+                    ocred_chars.push(ocred_char);
                 }
             }
         }
+    }
+
+    let lines = group_chars_by_line(ocred_chars);
+    for line in lines {
+        let mut end_x = line[0].bounds.end.x;
+        for ocred_char in line {
+            if ocred_char.bounds.start.x as i32 - end_x as i32 > 5 {
+                print!(" ");
+            }
+            end_x = ocred_char.bounds.end.x;
+            print!("{}", ocred_char.char_matches[0].char);
+        }
+        println!();
     }
 
     println!("points picked: {}", process.matched_points.len());
