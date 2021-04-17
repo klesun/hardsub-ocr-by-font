@@ -5,3 +5,4 @@ edition = "2018"
 
 [dependencies]
 ffmpeg-next = "4.3.8"
+ab_glyph = "0.2.10"

@@ -12,7 +12,7 @@
  * @param   {number}  b       The blue color value
  * @return  {Array}           The HSL representation
  */
-pub fn rgb_to_hsl(pixel: &Pixel) -> [f64; 3] {
+pub fn rgb_to_hsl(pixel: &Color) -> [f64; 3] {
     let r: f64 = pixel.r as f64 / 255.0;
     let g: f64 = pixel.g as f64 / 255.0;
     let b: f64 = pixel.b as f64 / 255.0;
@@ -39,14 +39,14 @@ pub fn rgb_to_hsl(pixel: &Pixel) -> [f64; 3] {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct Pixel {
+pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
 }
 
-impl Pixel {
-    pub const BLACK: Pixel = Pixel { r: 0, g: 0, b: 0 };
+impl Color {
+    pub const BLACK: Color = Color { r: 0, g: 0, b: 0 };
 
     pub fn get_hue(&self) -> f64 {
         let [h, _s, _l] = rgb_to_hsl(self);
@@ -83,6 +83,11 @@ impl Pixel {
 pub struct Point {
     pub x: usize,
     pub y: usize,
+}
+
+pub struct Pixel {
+    pub point: Point,
+    pub color: Color,
 }
 
 pub fn get_surrounding(base_point: &Point, width: usize, height: usize) -> Vec<Point> {

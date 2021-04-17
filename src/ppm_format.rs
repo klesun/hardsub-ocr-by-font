@@ -5,7 +5,7 @@
 //!
 //! this module provides functions that read/save the file binary representation
 
-use crate::pixel_utils::{Pixel, Point};
+use crate::pixel_utils::{Color, Point};
 
 pub struct PpmData {
     pub version: String,
@@ -27,13 +27,13 @@ impl PpmData {
         return pixel_index * 3;
     }
 
-    pub fn get_pixel(&self, point: &Point) -> Pixel {
+    pub fn get_pixel(&self, point: &Point) -> Color {
         let byte_index = self.get_byte_index(point);
         let r = self.get_bitmap()[byte_index + 0];
         let g = self.get_bitmap()[byte_index + 1];
         let b = self.get_bitmap()[byte_index + 2];
 
-        return Pixel { r, g, b };
+        return Color { r, g, b };
     }
 }
 
