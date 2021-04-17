@@ -2,7 +2,7 @@ use crate::match_letter_to_font::match_letter_to_font;
 use crate::pixel_utils::{get_surrounding, Color, Pixel, Point};
 use crate::ppm_format;
 use crate::ppm_format::PpmData;
-use ab_glyph::{point, Font, FontRef, Glyph};
+use ab_glyph::FontRef;
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
@@ -119,7 +119,7 @@ impl OcrProcess<'_> {
     }
 
     fn match_as_part_of_letter(&mut self, point: Point, pixel: &Color) -> &[Point] {
-        if !pixel.is_nearly_white() {
+        if !pixel.is_nearly_white() || self.checked_points[point.x][point.y] {
             return &[];
         }
         let matched_points_start = self.matched_points.len();
@@ -142,10 +142,9 @@ impl OcrProcess<'_> {
 
     fn save_file(&self, name: &str) -> std::result::Result<(), std::io::Error> {
         let mut file = File::create(format!("out/change_frames/{}.ppm", name))?;
-        let ppm_header = format!(
-            "P6\n{} {}\n255\n",
+        let ppm_header = ppm_format::make_header(
             self.ocr_frame.get_width(),
-            self.ocr_frame.get_height()
+            self.ocr_frame.get_height(),
         );
         file.write_all(ppm_header.as_bytes())?;
         file.write_all(&self.output_bitmap)?;
@@ -166,6 +165,7 @@ pub fn ocr_out_from_image() {
     let mut process = OcrProcess::init(&ocr_frame);
     let font = get_font();
 
+    let mut letters_matched = 0;
     for y in 0..ocr_frame.get_height() {
         for x in 0..ocr_frame.get_width() {
             let point = Point { x, y };
@@ -182,8 +182,13 @@ pub fn ocr_out_from_image() {
                     })
                     .collect();
                 if letter_pixels.len() > 0 {
-                    match_letter_to_font(&letter_pixels, &font);
-                    panic!("v pizdu");
+                    let mut char_matches = match_letter_to_font(&letter_pixels, &font, letters_matched);
+                    for _i in 0..3 {
+                        let next_best = char_matches.pop().unwrap();
+                        println!("actual match: {:?}", next_best);
+                    }
+                    letters_matched += 1;
+                    // panic!("v pizdu");
                 }
             }
         }

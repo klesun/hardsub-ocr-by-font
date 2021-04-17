@@ -77,6 +77,10 @@ impl Color {
         let [_h, s, l] = rgb_to_hsl(&self);
         return self.is_closely_white() || s < 0.20 && l > 0.35;
     }
+
+    pub fn to_vector(&self) -> [u8; 3] {
+        return [self.r, self.g, self.b];
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

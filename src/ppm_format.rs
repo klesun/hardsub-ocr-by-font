@@ -37,6 +37,10 @@ impl PpmData {
     }
 }
 
+pub fn make_header(width: usize, height: usize) -> String {
+    return format!("P6\n{} {}\n255\n", width, height);
+}
+
 pub fn decode(raw_bytes: Vec<u8>) -> PpmData {
     let mut version = String::from("");
     let mut width = 0;

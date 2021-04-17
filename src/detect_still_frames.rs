@@ -6,6 +6,7 @@ use ffmpeg::software::scaling::{context::Context, flag::Flags};
 use ffmpeg::util::frame::video::Video;
 use std::fs::File;
 use std::io::prelude::*;
+use crate::ppm_format;
 
 fn make_scaler(decoder: &ffmpeg::decoder::video::Video) -> Result<Context, ffmpeg::Error> {
     Context::get(
@@ -57,7 +58,11 @@ fn analyze_new_frame(old_frame: &Video, new_frame: &Video) -> NewFrameInfo {
     let old_pixel_bytes = old_frame.data(0);
     let new_pixel_bytes = new_frame.data(0);
     if old_pixel_bytes.len() != new_pixel_bytes.len() {
-        panic!("pizdeeeeeeec, two frames have different bitmap sizes: {} and {}", old_pixel_bytes.len(), new_pixel_bytes.len())
+        panic!(
+            "pizdeeeeeeec, two frames have different bitmap sizes: {} and {}",
+            old_pixel_bytes.len(),
+            new_pixel_bytes.len()
+        )
     }
     let bitmap_size = old_pixel_bytes.len() as usize;
     let width = old_frame.width();
@@ -75,9 +80,11 @@ fn analyze_new_frame(old_frame: &Video, new_frame: &Video) -> NewFrameInfo {
             // does not matter whether it's red, green or blue byte
             let old_byte = old_pixel_bytes[byte_index];
             let new_byte = new_pixel_bytes[byte_index];
-            let change_byte = if old_byte > new_byte
-            { old_byte - new_byte } else
-            { new_byte - old_byte };
+            let change_byte = if old_byte > new_byte {
+                old_byte - new_byte
+            } else {
+                new_byte - old_byte
+            };
             if change_byte > 0 {
                 let color_str = PIXEL_COLORS[color_index as usize];
                 // println!("x: {}, y: {}, color: {}, change: {}", x, y, color_str, change_byte);
@@ -95,16 +102,23 @@ fn analyze_new_frame(old_frame: &Video, new_frame: &Video) -> NewFrameInfo {
     }
     let change_factor = total_change / old_pixel_bytes.len() as f64;
 
-    let is_text_change =
-        change_factor > CHANGE_FACTOR_THRESHOLD &&
-            real_points_changed < QUALITY_JUMP_POINTS_THRESHOLD &&
-            real_points_changed > 15000
-        ;
+    let is_text_change = change_factor > CHANGE_FACTOR_THRESHOLD
+        && real_points_changed < QUALITY_JUMP_POINTS_THRESHOLD
+        && real_points_changed > 15000;
 
-    return NewFrameInfo { change_factor, real_points_changed, is_text_change, text_only_frame };
+    return NewFrameInfo {
+        change_factor,
+        real_points_changed,
+        is_text_change,
+        text_only_frame,
+    };
 }
 
-fn save_file(bitmap: &[u8], ppm_header: &str, name: String) -> std::result::Result<(), std::io::Error> {
+fn save_file(
+    bitmap: &[u8],
+    ppm_header: &str,
+    name: String,
+) -> std::result::Result<(), std::io::Error> {
     let mut file = File::create(format!("out/change_frames/{}.ppm", name))?;
     file.write_all(ppm_header.as_bytes())?;
     file.write_all(bitmap)?;
@@ -138,16 +152,35 @@ pub fn detect_still_frames() -> Result<(), ffmpeg::Error> {
                     let mut rgb_frame = Video::empty();
 
                     scaler.run(&decoded, &mut rgb_frame)?;
-                    let ppm_header = format!("P6\n{} {}\n255\n", rgb_frame.width(), rgb_frame.height());
+                    let ppm_header = ppm_format::make_header(
+                        rgb_frame.width() as usize,
+                        rgb_frame.height() as usize
+                    );
 
                     if frame_index > 0 {
                         let seconds = (frame_index as f32 / FRAME_RATE).floor();
                         let rel_frame_index = (frame_index as f32 % FRAME_RATE).round();
                         let info = analyze_new_frame(&last_frame, &rgb_frame);
                         if info.is_text_change {
-                            println!("Frame {} at {}:{} s. change factor: {}, points: {}", frame_index, seconds, rel_frame_index, info.change_factor, info.real_points_changed);
-                            save_file(rgb_frame.data(0), &ppm_header, format!("frame{}_old", frame_index));
-                            save_file(&info.text_only_frame, &ppm_header, format!("frame{}_new", frame_index));
+                            println!(
+                                "Frame {} at {}:{} s. change factor: {}, points: {}",
+                                frame_index,
+                                seconds,
+                                rel_frame_index,
+                                info.change_factor,
+                                info.real_points_changed
+                            );
+                            save_file(
+                                rgb_frame.data(0),
+                                &ppm_header,
+                                format!("frame{}_old", frame_index),
+                            ).unwrap();
+
+                            save_file(
+                                &info.text_only_frame,
+                                &ppm_header,
+                                format!("frame{}_new", frame_index),
+                            ).unwrap();
                         }
                     }
                     frame_index += 1;
