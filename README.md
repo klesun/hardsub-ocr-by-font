@@ -5,4 +5,4 @@ A Rust script that takes an H.264/VP9/etc... video and outputs a json file with 
 
 ![image](https://user-images.githubusercontent.com/5202330/114280118-8848f800-9a40-11eb-9861-b96f81544064.png)
 
-![image](https://user-images.githubusercontent.com/5202330/114322991-d8e94f80-9b2b-11eb-965a-fd10f60fb07a.png)
+![image](https://user-images.githubusercontent.com/5202330/114351812-cd217b80-9b73-11eb-9600-1a9bf11d11d9.png)
