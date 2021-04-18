@@ -90,15 +90,17 @@ impl OcrProcess<'_> {
         };
     }
 
-    fn keep_pixel(&mut self, point: Point) {
-        self.matched_points.push(point);
-
+    fn set_output_pixel(&mut self, point: Point, color: Color) {
         let byte_index = self.ocr_frame.get_byte_index(&point);
-        let Color { r, g, b } = self.ocr_frame.get_pixel(&point);
+        let Color { r, g, b } = color;
         self.output_bitmap[byte_index + 0] = r;
         self.output_bitmap[byte_index + 1] = g;
         self.output_bitmap[byte_index + 2] = b;
+    }
 
+    fn keep_pixel(&mut self, point: Point) {
+        self.matched_points.push(point);
+        self.set_output_pixel(point, self.ocr_frame.get_pixel(&point));
         self.checked_points[point.x as usize][point.y as usize] = true; // redundant for call except for first one
     }
 
@@ -129,14 +131,28 @@ impl OcrProcess<'_> {
         let mut pick_points = Vec::with_capacity(64);
         pick_points.push(point);
 
+        let mut non_black_border = false;
         while pick_points.len() > 0 {
             let base_point = pick_points.pop().unwrap();
             for next_point in self.check_surrounding(base_point) {
-                if self.ocr_frame.get_pixel(&next_point).is_somewhat_white() {
+                let pixel = self.ocr_frame.get_pixel(&next_point);
+                if pixel.is_closely_black() {
+                    // black outline of the letters
+                } else if pixel.is_somewhat_white() || pixel.is_greyish() {
                     self.keep_pixel(next_point);
                     pick_points.push(next_point);
+                } else {
+                    non_black_border = true;
                 }
             }
+        }
+        if non_black_border {
+            // borders are nt black, not subs, abort
+            let wrong_points = self.matched_points[matched_points_start..].to_vec();
+            for wrong_point in &wrong_points {
+                self.set_output_pixel(*wrong_point, Color::BLACK);
+            }
+            return &[];
         }
 
         return &self.matched_points[matched_points_start..];
@@ -233,6 +249,9 @@ pub fn ocr_out_from_image<'a>() {
         }
     }
 
+    println!("points picked: {}", process.matched_points.len());
+    process.save_file("frame15_white_only").unwrap();
+
     rel_bitmaps.sort_by(cmp_letters_order);
     let mut ocred_chars: Vec<OcredChar> = Vec::new();
     for rel_bitmap in rel_bitmaps {
@@ -261,7 +280,4 @@ pub fn ocr_out_from_image<'a>() {
         }
         println!();
     }
-
-    println!("points picked: {}", process.matched_points.len());
-    process.save_file("frame15_white_only").unwrap();
 }

@@ -65,17 +65,22 @@ impl Color {
 
     pub fn is_nearly_white(&self) -> bool {
         let [_h, _s, l] = rgb_to_hsl(&self);
-        return l > 0.95;
-    }
-
-    pub fn is_closely_white(&self) -> bool {
-        let [_h, _s, l] = rgb_to_hsl(&self);
         return l > 0.80;
     }
 
     pub fn is_somewhat_white(&self) -> bool {
-        let [_h, s, l] = rgb_to_hsl(&self);
-        return self.is_closely_white() || s < 0.20 && l > 0.35;
+        let [_h, _s, l] = rgb_to_hsl(&self);
+        return l >= 0.70;
+    }
+
+    pub fn is_closely_black(&self) -> bool {
+        let [_h, _s, l] = rgb_to_hsl(&self);
+        return l < 0.25;
+    }
+
+    pub fn is_greyish(&self) -> bool {
+        let [_h, s, _l] = rgb_to_hsl(&self);
+        return s < 0.30;
     }
 
     pub fn to_vector(&self) -> [u8; 3] {

@@ -252,12 +252,15 @@ pub fn match_letter_to_font(rel_bitmap: &Vec<Vec<f32>>, font: &FontRef, index: u
     let char_options = [
         'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k',
         'l', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
-        'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Z', 'X', 'C', 'V', 'B', 'N', 'M',
+        'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', ',', '.',
     ];
     let expected = [
         'T', 'h', 'e', 'r', 'e', 'a', 'r', 'e', 'm','a','n','y','t','h','e','o','r','i','e','s','a','b','o','u','t',
         't','h','e','d','i','v','i','s','i','o','n','b','e','t','w','e','e','n','L','a','t','e','M','o','d','e','r','n',
-        'P','e','r','i','o','d','a','n','d','c','o','n','t','e','m','p','o','r','a','r',
+        'P','e','r','i','o','d','a','n','d','c','o','n','t','e','m','p','o','r','a','r','H','i','s','t','o','r',
+        'O','n','e','t','h','e','o','r','y','m','a','r','k','s','t','h','e','b','e','g','i','n','n','i','n','g',
+        'o','f','t','h','e','C','o','n','t','e','m','p','o','r','a','r','H','i','s','t','o','r','w','i','t','h',
+        't','h','e','b','i','r','h','o','f','t','h','e','n','e','w','m','o','d','e','l','t','s','u','r','u','g','i',
     ];
 
     let mut matches = BinaryHeap::new();
