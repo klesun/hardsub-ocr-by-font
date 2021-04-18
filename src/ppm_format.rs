@@ -23,7 +23,7 @@ impl PpmData {
     }
 
     pub fn get_byte_index(&self, point: &Point) -> usize {
-        let pixel_index = point.y * self.width + point.x;
+        let pixel_index = point.y as usize * self.width + point.x as usize;
         return pixel_index * 3;
     }
 

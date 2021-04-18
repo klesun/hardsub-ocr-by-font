@@ -99,7 +99,7 @@ impl OcrProcess<'_> {
         self.output_bitmap[byte_index + 1] = g;
         self.output_bitmap[byte_index + 2] = b;
 
-        self.checked_points[point.x][point.y] = true; // redundant for call except for first one
+        self.checked_points[point.x as usize][point.y as usize] = true; // redundant for call except for first one
     }
 
     fn check_surrounding(&mut self, base_point: Point) -> Vec<Point> {
@@ -112,8 +112,8 @@ impl OcrProcess<'_> {
             self.ocr_frame.get_width(),
             self.ocr_frame.get_height(),
         ) {
-            if !self.checked_points[p.x][p.y] {
-                self.checked_points[p.x][p.y] = true;
+            if !self.checked_points[p.x as usize][p.y as usize] {
+                self.checked_points[p.x as usize][p.y as usize] = true;
                 options.push(p);
             }
         }
@@ -121,7 +121,7 @@ impl OcrProcess<'_> {
     }
 
     fn match_as_part_of_letter(&mut self, point: Point, pixel: &Color) -> &[Point] {
-        if !pixel.is_nearly_white() || self.checked_points[point.x][point.y] {
+        if !pixel.is_nearly_white() || self.checked_points[point.x as usize][point.y as usize] {
             return &[];
         }
         let matched_points_start = self.matched_points.len();
@@ -210,8 +210,8 @@ pub fn ocr_out_from_image<'a>() {
     let font = get_font();
 
     let mut rel_bitmaps: Vec<RelMatrix> = Vec::new();
-    for y in 0..ocr_frame.get_height() {
-        for x in 0..ocr_frame.get_width() {
+    for y in 0..ocr_frame.get_height() as i64 {
+        for x in 0..ocr_frame.get_width() as i64 {
             let point = Point { x, y };
             let pixel = ocr_frame.text_ppm.get_pixel(&point);
             if pixel != Color::BLACK {
@@ -239,7 +239,8 @@ pub fn ocr_out_from_image<'a>() {
         let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
 
         let next_best = char_matches[0];
-        println!("actual match #{}: {:?}", ocred_chars.len(), next_best);
+        let comment = if next_best.match_score < 8000000 { "huj" } else { "" };
+        println!("actual match #{}: {:?} {}", ocred_chars.len(), next_best, comment);
 
         let ocred_char: OcredChar = OcredChar {
             bounds: rel_bitmap.bounds,

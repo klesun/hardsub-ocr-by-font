@@ -89,37 +89,62 @@ fn get_font_bitmap(char: char, shift: &ab_glyph::Point, font: &FontRef) -> RelMa
     return make_rel_bitmap(coverages);
 }
 
+/// if same pixel on both font bitmap and image bitmap is of completely same lightness, result is 1.0
+/// if pixel is completely black on one and completely white on the other, result is 0.0
+fn get_pixel_score(x: usize, y: usize, c: f32, img_bitmap: &Vec<Vec<f32>>) -> f32 {
+    let mut overbound =
+        max(0, x as i64 - img_bitmap.len() as i64 + 1) +
+        max(0, y as i64 - img_bitmap[0].len() as i64 + 1);
+    return if overbound <= 0 {
+        let img_coverage = img_bitmap[x as usize][y as usize];
+        let difference = (c - img_coverage).abs();
+        1.0 - difference
+    } else {
+        -c * (overbound * overbound) as f32 / 100.0
+    }
+}
+
 fn compare_bitmaps(font_bitmap: &Vec<Vec<f32>>, img_bitmap: &Vec<Vec<f32>>) -> f32 {
-    let mut matched_score = 0f32;
+    //let max_possible_score = (font_bitmap.len() * font_bitmap[0].len()) as f32;
     let max_possible_score = (img_bitmap.len() * img_bitmap[0].len()) as f32;
 
-    for (x, cols) in font_bitmap.iter().enumerate() {
-        for (y, c) in cols.iter().enumerate() {
-            let mut overbound =
-                max(0, x as i64 - img_bitmap.len() as i64 + 1) +
-                    max(0, y as i64 - img_bitmap[0].len() as i64 + 1);
-            if overbound <= 0 {
-                let img_coverage = img_bitmap[x as usize][y as usize];
-                let difference = (*c - img_coverage).abs();
-                matched_score += (1.0 - difference);
-            } else {
-                matched_score -= c * (overbound * overbound) as f32 / 100.0;
+    let img_shift_options = [
+        Point { x:  0, y:  0 },
+        Point { x:  1, y:  0 },
+        Point { x:  1, y:  1 },
+        Point { x:  0, y:  1 },
+        Point { x: -1, y:  1 },
+        Point { x: -1, y:  0 },
+        Point { x:  0, y: -1 },
+        Point { x:  1, y: -1 },
+    ];
+    let mut best_score = 0f32;
+    for shift in &img_shift_options {
+        let mut score = 0f32;
+        for (x, cols) in font_bitmap.iter().enumerate() {
+            for (y, c) in cols.iter().enumerate() {
+                let shifted_x = x as i64 + shift.x;
+                let shifted_y = y as i64 + shift.y;
+                if shifted_x >= 0 && shifted_y >= 0 {
+                    score += get_pixel_score(shifted_x as usize, shifted_y as usize, *c, img_bitmap);
+                }
             }
         }
+        best_score = best_score.max(score);
     }
-    return matched_score / max_possible_score;
+    return best_score / max_possible_score;
 }
 
 fn match_bitmap_to_char(img_bitmap: &Vec<Vec<f32>>, char: char, font: &FontRef, is_expected: bool, index: usize) -> CharMatch {
     let mut matches = BinaryHeap::new();
-    let shift_options = [
+    let font_shift_options = [
         point(0.0, 0.0),
         point(0.5, 0.0),
         point(0.0, 0.5),
         point(0.5, 0.5),
     ];
-    for (shift_index, shift) in shift_options.iter().enumerate() {
-        let font_matrix = get_font_bitmap(char, shift, font);
+    for (i, font_shift) in font_shift_options.iter().enumerate() {
+        let font_matrix = get_font_bitmap(char, font_shift, font);
         let match_score = compare_bitmaps(&font_matrix.bitmap, img_bitmap);
         let match_option = CharMatch {
             char,
@@ -127,7 +152,13 @@ fn match_bitmap_to_char(img_bitmap: &Vec<Vec<f32>>, char: char, font: &FontRef, 
         };
 
         if is_expected {
-            draw_debug(img_bitmap, &font_matrix.bitmap, format!("_{}_{}_{}_{}", index, char, shift_index, match_option.match_score / 100000));
+            draw_debug(
+                img_bitmap, &font_matrix.bitmap,
+                format!(
+                    "_{}_{}_{}_{}", index, char, i,
+                    match_option.match_score / 100000
+                )
+            );
         }
         matches.push(match_option);
     }
@@ -151,11 +182,11 @@ pub struct Bounds {
 
 impl Bounds {
     pub fn get_width(&self) -> usize {
-        return self.end.x - self.start.x;
+        return (self.end.x - self.start.x) as usize;
     }
 
     pub fn get_height(&self) -> usize {
-        return self.end.y - self.start.y;
+        return (self.end.y - self.start.y) as usize;
     }
 }
 
@@ -174,12 +205,12 @@ fn get_bounds(letter_pixels: &Vec<PixelCoverage>) -> Bounds {
     }
     return Bounds {
         start: Point {
-            x: min_x as usize,
-            y: min_y as usize,
+            x: min_x as i64,
+            y: min_y as i64,
         },
         end: Point {
-            x: max_x as usize,
-            y: max_y as usize,
+            x: max_x as i64,
+            y: max_y as i64,
         },
     };
 }
@@ -195,9 +226,9 @@ fn make_rel_bitmap(letter_pixels: Vec<PixelCoverage>) -> RelMatrix {
         .iter().filter(|p| p.c > 0.001).collect();
     let width = bounds.end.x - bounds.start.x + 1;
     let height = bounds.end.y - bounds.start.y + 1;
-    let mut rel_bitmap = vec![vec![0.0; height]; width];
+    let mut rel_bitmap = vec![vec![0.0; height as usize]; width as usize];
     for PixelCoverage { x, y, c } in &collected {
-        rel_bitmap[(*x as usize - bounds.start.x)][(*y as usize - bounds.start.y)] = *c;
+        rel_bitmap[(*x as usize - bounds.start.x as usize)][(*y as usize - bounds.start.y as usize)] = *c;
     }
     return RelMatrix {
         bounds: bounds,
@@ -226,6 +257,7 @@ pub fn match_letter_to_font(rel_bitmap: &Vec<Vec<f32>>, font: &FontRef, index: u
     let expected = [
         'T', 'h', 'e', 'r', 'e', 'a', 'r', 'e', 'm','a','n','y','t','h','e','o','r','i','e','s','a','b','o','u','t',
         't','h','e','d','i','v','i','s','i','o','n','b','e','t','w','e','e','n','L','a','t','e','M','o','d','e','r','n',
+        'P','e','r','i','o','d','a','n','d','c','o','n','t','e','m','p','o','r','a','r',
     ];
 
     let mut matches = BinaryHeap::new();

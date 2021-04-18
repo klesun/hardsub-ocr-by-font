@@ -85,8 +85,8 @@ impl Color {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct Point {
-    pub x: usize,
-    pub y: usize,
+    pub x: i64,
+    pub y: i64,
 }
 
 pub struct Pixel {
@@ -99,13 +99,13 @@ pub fn get_surrounding(base_point: &Point, width: usize, height: usize) -> Vec<P
     if base_point.x > 0 {
         options.push(Point { x: base_point.x - 1, y: base_point.y });
     }
-    if base_point.x < width - 1 {
+    if (base_point.x as usize) < width - 1 {
         options.push(Point { x: base_point.x + 1, y: base_point.y });
     }
     if base_point.y > 0 {
         options.push(Point { x: base_point.x, y: base_point.y - 1 });
     }
-    if base_point.y < height - 1 {
+    if (base_point.y as usize) < height - 1 {
         options.push(Point { x: base_point.x, y: base_point.y + 1 });
     }
     return options;
