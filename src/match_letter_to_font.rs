@@ -105,7 +105,6 @@ fn get_pixel_score(x: usize, y: usize, c: f32, img_bitmap: &Vec<Vec<f32>>) -> f3
 }
 
 fn compare_bitmaps(font_bitmap: &Vec<Vec<f32>>, img_bitmap: &Vec<Vec<f32>>) -> f32 {
-    //let max_possible_score = (font_bitmap.len() * font_bitmap[0].len()) as f32;
     let max_possible_score = (img_bitmap.len() * img_bitmap[0].len()) as f32;
 
     let img_shift_options = [

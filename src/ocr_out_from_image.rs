@@ -363,7 +363,11 @@ pub fn ocr_out_from_image<'a>() {
                 print!(" ");
             }
             end_x = ocred_char.bounds.end.x;
-            print!("{}", ocred_char.char_matches[0].char);
+            if ocred_char.char_matches[0].match_score > 8000000 {
+                print!("{}", ocred_char.char_matches[0].char);
+            } else {
+                print!("_")
+            }
         }
         println!();
     }
