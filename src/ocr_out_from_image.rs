@@ -1,4 +1,4 @@
-use crate::match_letter_to_font::{match_letter_to_font, CharMatch, make_rel_bitmap_from_image, Bounds};
+use crate::match_letter_to_font::{match_letter_to_font, CharMatch, make_rel_bitmap_from_image, Bounds, RelMatrix};
 use crate::pixel_utils::{get_surrounding, Color, Pixel, Point};
 use crate::ppm_format;
 use crate::ppm_format::PpmData;
@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
 use std::collections::BinaryHeap;
+use std::cmp::Ordering;
 
 fn read_file(suffix: &str) -> PpmData {
     let frame_name = "frame15";
@@ -190,6 +191,16 @@ fn group_chars_by_line(ocred_chars: Vec<OcredChar>) -> Vec<Vec<OcredChar>> {
     return lines;
 }
 
+fn cmp_letters_order(a: &RelMatrix, b: &RelMatrix) -> Ordering {
+    return if a.bounds.start.y > b.bounds.start.y + 15 {
+        Ordering::Greater // a is below b
+    } else if b.bounds.start.y > a.bounds.start.y + 15 {
+        Ordering::Less // a is above b
+    } else {
+        a.bounds.start.x.cmp(&b.bounds.start.x)
+    }
+}
+
 /// run through every white-ish pixel in the image, find the borders of the
 /// symbol it belongs to, (like magic stick in photoshop), then compare
 /// resulting bitmap to every character in the Sans-serif font
@@ -198,7 +209,7 @@ pub fn ocr_out_from_image<'a>() {
     let mut process = OcrProcess::init(&ocr_frame);
     let font = get_font();
 
-    let mut ocred_chars: Vec<OcredChar> = Vec::new();
+    let mut rel_bitmaps: Vec<RelMatrix> = Vec::new();
     for y in 0..ocr_frame.get_height() {
         for x in 0..ocr_frame.get_width() {
             let point = Point { x, y };
@@ -216,19 +227,25 @@ pub fn ocr_out_from_image<'a>() {
                     .collect();
                 if letter_pixels.len() > 0 {
                     let rel_bitmap = make_rel_bitmap_from_image(&letter_pixels);
-                    let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
-
-                    let next_best = char_matches[0];
-                    println!("actual match #{}: {:?}", ocred_chars.len(), next_best);
-
-                    let ocred_char: OcredChar = OcredChar {
-                        bounds: rel_bitmap.bounds,
-                        char_matches,
-                    };
-                    ocred_chars.push(ocred_char);
+                    rel_bitmaps.push(rel_bitmap);
                 }
             }
         }
+    }
+
+    rel_bitmaps.sort_by(cmp_letters_order);
+    let mut ocred_chars: Vec<OcredChar> = Vec::new();
+    for rel_bitmap in rel_bitmaps {
+        let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
+
+        let next_best = char_matches[0];
+        println!("actual match #{}: {:?}", ocred_chars.len(), next_best);
+
+        let ocred_char: OcredChar = OcredChar {
+            bounds: rel_bitmap.bounds,
+            char_matches,
+        };
+        ocred_chars.push(ocred_char);
     }
 
     let lines = group_chars_by_line(ocred_chars);
