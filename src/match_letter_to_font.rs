@@ -182,11 +182,11 @@ pub struct Bounds {
 
 impl Bounds {
     pub fn get_width(&self) -> usize {
-        return (self.end.x - self.start.x) as usize;
+        return (self.end.x - self.start.x + 1) as usize;
     }
 
     pub fn get_height(&self) -> usize {
-        return (self.end.y - self.start.y) as usize;
+        return (self.end.y - self.start.y + 1) as usize;
     }
 }
 

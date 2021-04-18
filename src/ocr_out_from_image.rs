@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
 use std::collections::BinaryHeap;
-use std::cmp::Ordering;
+use std::cmp::{Ordering, max, min};
 
 fn read_file(suffix: &str) -> PpmData {
     let frame_name = "frame15";
@@ -207,14 +207,100 @@ fn group_chars_by_line(ocred_chars: Vec<OcredChar>) -> Vec<Vec<OcredChar>> {
     return lines;
 }
 
+const SAME_LINE_Y_THRESHOLD: u32 = 15;
+
 fn cmp_letters_order(a: &RelMatrix, b: &RelMatrix) -> Ordering {
-    return if a.bounds.start.y > b.bounds.start.y + 15 {
+    return if a.bounds.start.y > b.bounds.start.y + SAME_LINE_Y_THRESHOLD as i64 {
         Ordering::Greater // a is below b
-    } else if b.bounds.start.y > a.bounds.start.y + 15 {
+    } else if b.bounds.start.y > a.bounds.start.y + SAME_LINE_Y_THRESHOLD as i64 {
         Ordering::Less // a is above b
     } else {
         a.bounds.start.x.cmp(&b.bounds.start.x)
     }
+}
+
+fn are_parts_of_same_char(prev_item: &RelMatrix, current_item: &RelMatrix) -> bool {
+    let x_overlap_start = max(prev_item.bounds.start.x, current_item.bounds.start.x);
+    let x_overlap_end = min(prev_item.bounds.end.x, current_item.bounds.end.x);
+    let width = min(
+        prev_item.bounds.end.x - prev_item.bounds.start.x,
+        current_item.bounds.end.x - current_item.bounds.start.x,
+    );
+    let x_overlap_px = x_overlap_end - x_overlap_start;
+    // may be negative
+    let x_overlap_rel = x_overlap_px as f32 / width as f32;
+
+    let y_start_offset = (prev_item.bounds.start.y - current_item.bounds.start.y).abs();
+
+    return x_overlap_rel > 0.5 && y_start_offset < SAME_LINE_Y_THRESHOLD as i64;
+}
+
+fn merge_char_parts(prev_item: &RelMatrix, current_item: &RelMatrix) -> RelMatrix {
+    let bounds = Bounds {
+        start: Point {
+            x: min(
+                prev_item.bounds.start.x,
+                current_item.bounds.start.x,
+            ),
+            y: min(
+                prev_item.bounds.start.y,
+                current_item.bounds.start.y,
+            ),
+        },
+        end: Point {
+            x: max(
+                prev_item.bounds.end.x,
+                current_item.bounds.end.x,
+            ),
+            y: max(
+                prev_item.bounds.end.y,
+                current_item.bounds.end.y,
+            ),
+        },
+    };
+    let mut bitmap = vec![
+        vec![0.0; bounds.get_height()];
+        bounds.get_width()
+    ];
+    for matrix in [prev_item, current_item].iter() {
+        let base = Point {
+            x: matrix.bounds.start.x - bounds.start.x,
+            y: matrix.bounds.start.y - bounds.start.y,
+        };
+        for (x, cols) in matrix.bitmap.iter().enumerate() {
+            for (y, coverage) in cols.iter().enumerate() {
+                bitmap[base.x as usize + x as usize][base.y as usize + y as usize] = *coverage;
+            }
+        }
+    }
+    return RelMatrix { bounds, bitmap };
+}
+
+/// dots on "i"s are extracted as separate characters, but they can be easily
+/// deducted as their x position clashes with position of the stick part
+fn dot_the_is(mut rel_bitmaps: Vec<RelMatrix>) -> Vec<RelMatrix> {
+    let mut dotted = Vec::new();
+    let mut current_item_opt = rel_bitmaps.pop();
+    while current_item_opt.is_some() {
+        let current_item = current_item_opt.unwrap();
+        let prev_item_opt = rel_bitmaps.pop();
+        if prev_item_opt.is_some() {
+            let prev_item = prev_item_opt.unwrap();
+            if are_parts_of_same_char(&prev_item, &current_item) {
+                current_item_opt = Some(
+                    merge_char_parts(&prev_item, &current_item)
+                );
+            } else {
+                dotted.push(current_item);
+                current_item_opt = Some(prev_item);
+            }
+        } else {
+            dotted.push(current_item);
+            current_item_opt = None;
+        }
+    }
+    dotted.reverse();
+    return dotted;
 }
 
 /// run through every white-ish pixel in the image, find the borders of the
@@ -253,6 +339,7 @@ pub fn ocr_out_from_image<'a>() {
     process.save_file("frame15_white_only").unwrap();
 
     rel_bitmaps.sort_by(cmp_letters_order);
+    rel_bitmaps = dot_the_is(rel_bitmaps);
     let mut ocred_chars: Vec<OcredChar> = Vec::new();
     for rel_bitmap in rel_bitmaps {
         let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
