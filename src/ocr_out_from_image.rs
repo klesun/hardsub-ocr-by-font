@@ -1,4 +1,4 @@
-use crate::match_letter_to_font::{match_letter_to_font, CharMatch, make_rel_bitmap_from_image, Bounds, RelMatrix};
+use crate::match_letter_to_font::{match_letter_to_font, CharMatch, make_rel_bitmap_from_image};
 use crate::pixel_utils::{get_surrounding, Color, Pixel, Point};
 use crate::ppm_format;
 use crate::ppm_format::PpmData;
@@ -9,6 +9,8 @@ use std::io::prelude::*;
 use std::io::Read;
 use std::collections::BinaryHeap;
 use std::cmp::{Ordering, max, min};
+use crate::rel_matrix::{Bounds, RelMatrix};
+use crate::font_data::FontData;
 
 fn read_file(suffix: &str) -> PpmData {
     let frame_name = "frame15";
@@ -170,9 +172,10 @@ impl OcrProcess<'_> {
     }
 }
 
-fn get_font<'a>() -> FontRef<'a> {
+fn get_font_data() -> FontData {
     let font_bytes = include_bytes!("../arial.ttf");
-    return FontRef::try_from_slice(font_bytes).unwrap();
+    let font_ref = FontRef::try_from_slice(font_bytes).unwrap();
+    return FontData::init(&font_ref);
 }
 
 struct OcredChar {
@@ -309,7 +312,7 @@ fn dot_the_is(mut rel_bitmaps: Vec<RelMatrix>) -> Vec<RelMatrix> {
 pub fn ocr_out_from_image<'a>() {
     let ocr_frame = SubsOcrFrame::load();
     let mut process = OcrProcess::init(&ocr_frame);
-    let font = get_font();
+    let font_data = get_font_data();
 
     let mut rel_bitmaps: Vec<RelMatrix> = Vec::new();
     for y in 0..ocr_frame.get_height() as i64 {
@@ -342,9 +345,9 @@ pub fn ocr_out_from_image<'a>() {
     rel_bitmaps = dot_the_is(rel_bitmaps);
     let mut ocred_chars: Vec<OcredChar> = Vec::new();
     for rel_bitmap in rel_bitmaps {
-        let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font, ocred_chars.len());
+        let char_matches = match_letter_to_font(&rel_bitmap.bitmap, &font_data, ocred_chars.len());
 
-        let next_best = char_matches[0];
+        let next_best = &char_matches[0];
         let comment = if next_best.match_score < 8000000 { "huj" } else { "" };
         println!("actual match #{}: {:?} {}", ocred_chars.len(), next_best, comment);
 
