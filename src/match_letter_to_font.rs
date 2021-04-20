@@ -17,6 +17,7 @@ pub struct CharMatch {
     pub char: String,
     pub match_score: i64,
     pub font_area_score: i64,
+    pub font_shift_index: usize,
 }
 
 impl Ord for CharMatch {
@@ -31,7 +32,7 @@ impl PartialOrd for CharMatch {
     }
 }
 
-fn draw_debug(img_bitmap: &Vec<Vec<f32>>, font_bitmap: &Vec<Vec<f32>>, suffix: String) {
+fn draw_debug(img_bitmap: &[Vec<f32>], font_bitmap: &[Vec<f32>], suffix: String) {
     let img_width = img_bitmap.len();
     let img_height = img_bitmap[0].len();
     let font_width = font_bitmap.len();
@@ -74,7 +75,7 @@ fn draw_debug(img_bitmap: &Vec<Vec<f32>>, font_bitmap: &Vec<Vec<f32>>, suffix: S
 
 /// if same pixel on both font bitmap and image bitmap is of completely same lightness, result is 1.0
 /// if pixel is completely black on one and completely white on the other, result is 0.0
-fn get_pixel_score(x: usize, y: usize, c: f32, img_bitmap: &Vec<Vec<f32>>) -> f32 {
+fn get_pixel_score(x: usize, y: usize, c: f32, img_bitmap: &[Vec<f32>]) -> f32 {
     let mut overbound =
         max(0, x as i64 - img_bitmap.len() as i64 + 1) +
         max(0, y as i64 - img_bitmap[0].len() as i64 + 1);
@@ -92,7 +93,54 @@ struct BitmapCompare {
     font_area_score: f32,
 }
 
-fn compare_bitmaps(font_bitmap: &Vec<Vec<f32>>, img_bitmap: &Vec<Vec<f32>>) -> BitmapCompare {
+fn is_empty_row(y: usize, check_x: usize, img_bitmap: &[Vec<f32>]) -> bool {
+    for x in 0..check_x {
+        if img_bitmap[x][y] > 0.001 {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn trim_y<'a>(check_x: usize, img_bitmap: &[Vec<f32>]) -> Option<Vec<Vec<f32>>> {
+    if check_x >= img_bitmap.len() {
+        return None;
+    }
+    let mut trim_y = 0;
+    if check_x < img_bitmap.len() {
+        for y in 0..img_bitmap[0].len() {
+            if is_empty_row(y, check_x, img_bitmap) {
+                trim_y = y + 1;
+            } else {
+                break;
+            }
+        }
+    }
+    if trim_y == 0 {
+        return None;
+    }
+    let mut trimmed = vec![
+        vec![0.0; img_bitmap[0].len() - trim_y];
+        img_bitmap.len()
+    ];
+    for x in 0..img_bitmap.len() {
+        for y in trim_y..img_bitmap[0].len() {
+            trimmed[x][y - trim_y] = img_bitmap[x][y];
+        }
+    }
+    return Some(trimmed);
+}
+
+fn compare_bitmaps(font_bitmap: &[Vec<f32>], img_bitmap_arg: &[Vec<f32>]) -> BitmapCompare {
+    let trimmed_opt = trim_y(font_bitmap.len(), img_bitmap_arg);
+    let mut zhopa;
+    let img_bitmap = if trimmed_opt.is_some() {
+        zhopa = trimmed_opt.unwrap();
+        &zhopa
+    } else {
+        img_bitmap_arg
+    };
+
     let hardsub_area = (img_bitmap.len() * img_bitmap[0].len()) as f32;
     let font_area = (font_bitmap.len() * font_bitmap[0].len()) as f32;
 
@@ -106,15 +154,17 @@ fn compare_bitmaps(font_bitmap: &Vec<Vec<f32>>, img_bitmap: &Vec<Vec<f32>>) -> B
         Point { x:  0, y: -1 },
         Point { x:  1, y: -1 },
     ];
+    // TODO: try to trim whitespace from top during partial match
     let mut best_score = 0f32;
     for shift in &img_shift_options {
         let mut score = 0f32;
-        for (x, cols) in font_bitmap.iter().enumerate() {
-            for (y, c) in cols.iter().enumerate() {
+        for (x, font_cells) in font_bitmap.iter().enumerate() {
+            for y in 0..max(font_cells.len(), img_bitmap[0].len()) {
+                let c = *font_cells.get(y).unwrap_or(&0.0);
                 let shifted_x = x as i64 + shift.x;
                 let shifted_y = y as i64 + shift.y;
                 if shifted_x >= 0 && shifted_y >= 0 {
-                    score += get_pixel_score(shifted_x as usize, shifted_y as usize, *c, img_bitmap);
+                    score += get_pixel_score(shifted_x as usize, shifted_y as usize, c, img_bitmap);
                 }
             }
         }
@@ -127,11 +177,11 @@ fn compare_bitmaps(font_bitmap: &Vec<Vec<f32>>, img_bitmap: &Vec<Vec<f32>>) -> B
 }
 
 fn match_bitmap_to_char(
-    img_bitmap: &Vec<Vec<f32>>,
+    img_bitmap: &[Vec<f32>],
     char: char,
     font_data: &FontData,
     is_expected: bool,
-    index: usize,
+    suffix: String,
 ) -> CharMatch {
     let mut matches = BinaryHeap::new();
     for (i, font_matrix) in font_data.get_bitmaps(char).iter().enumerate() {
@@ -143,16 +193,17 @@ fn match_bitmap_to_char(
             char: char.to_string(),
             match_score: (10000000.0 * hardsub_area_score) as i64,
             font_area_score: (10000000.0 * font_area_score) as i64,
+            font_shift_index: i,
         };
 
         if is_expected {
-            draw_debug(
-                img_bitmap, &font_matrix.bitmap,
-                format!(
-                    "_{}_{}_{}_{}", index, char, i,
-                    match_option.match_score / 100000
-                ),
-            );
+            // draw_debug(
+            //     img_bitmap, &font_matrix.bitmap,
+            //     format!(
+            //         "_{}_{}_{}_{}", suffix, char, i,
+            //         match_option.match_score / 100000
+            //     ),
+            // );
         }
         matches.push(match_option);
     }
@@ -189,7 +240,7 @@ pub fn match_letter_to_font(
     let expected = [
         'T', 'h', 'e', 'r', 'e', 'a', 'r', 'e', 'm','a','n','y','t','h','e','o','r','i','e','s','a','b','o','u','t',
         't','h','e','d','i','v','i','s','i','o','n','b','e','t','w','e','e','n','L','a','t','e','M','o','d','e','r','n',
-        'P','e','r','i','o','d','a','n','d','c','o','n','t','e','m','p','o','r','a','r','H','i','s','t','o','r',
+        'P','e','r','i','o','d','a','n','d','C','o','n','t','e','m','p','o','r','a','r','H','i','s','t','o','r',
         'O','n','e','t','h','e','o','r','y','m','a','r','k','s','t','h','e','b','e','g','i','n','n','i','n','g',
         'o','f','t','h','e','C','o','n','t','e','m','p','o','r','a','r','H','i','s','t','o','r','w','i','t','h',
         't','h','e','b','i','r','h','o','f','t','h','e','n','e','w','m','o','d','e','l','t','s','u','r','u','g','i',
@@ -198,21 +249,42 @@ pub fn match_letter_to_font(
     let mut matches = BinaryHeap::new();
     for char in &CHAR_OPTIONS {
         let is_expected = index < expected.len() && expected[index] == *char;
-        let matched = match_bitmap_to_char(rel_bitmap, *char, font_data, is_expected, index);
+        let matched = match_bitmap_to_char(rel_bitmap, *char, font_data, is_expected, index.to_string());
         if is_expected {
             println!("expect match #{}: {:?}", index, matched);
         }
         matches.push(matched);
     }
-    // if matches.peek().unwrap().match_score < 8000000 {
-    //     for bad_match in &matches {
-    //         if bad_match.font_area_score > 8000000 {
-    //             println!("ololo index {} partial match {}", index, bad_match.char);
-    //             // try match remaining part
-    //             let remaining_bitmap = rel_bitmap[bad_match.];
-    //         }
-    //     }
-    // }
+    let mut extra_matches = Vec::new();
+    // you also think it should be for arbitrary number of letters?
+    if matches.peek().unwrap().match_score < 8000000 {
+        for bad_match in &matches {
+            if bad_match.font_area_score >= 8000000 {
+                println!("ololo index {} partial match {}", index, bad_match.char);
+                let options = font_data.get_bitmaps(bad_match.char.chars().next().unwrap());
+                let cutout_x = options[bad_match.font_shift_index].bitmap.len();
+                if cutout_x < rel_bitmap.len() {
+                    let hardsub_proportion = cutout_x as f32 / rel_bitmap.len() as f32;
+                    let remaining_bitmap = &rel_bitmap[cutout_x ..];
+                    for char in &CHAR_OPTIONS {
+                        let remainder_match = match_bitmap_to_char(remaining_bitmap, *char, font_data, false, format!("{}.{}", index, bad_match.char));
+                        extra_matches.push(CharMatch {
+                            char: format!("{}{}", bad_match.char, remainder_match.char),
+                            font_area_score: (
+                                bad_match.font_area_score as f32 * hardsub_proportion +
+                                remainder_match.font_area_score as f32 * (1.0 - hardsub_proportion)
+                            ) as i64,
+                            match_score: bad_match.match_score + (remainder_match.match_score as f32 * (1.0 - hardsub_proportion)) as i64,
+                            font_shift_index: 100, // idgaf
+                        });
+                    }
+                }
+            }
+        }
+    }
+    for extra in extra_matches {
+        matches.push(extra);
+    }
 
     return matches.into_vec();
 }
